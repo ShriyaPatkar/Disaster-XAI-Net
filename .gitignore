@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Large local data and trained weights (not committed)
+demo_data/
+models/
+*.pth
+*.pt
+*.ckpt
+*.npz
+*.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

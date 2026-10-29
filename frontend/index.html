@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disaster XAI-Net</title>
+<link rel="stylesheet" href="/static/vendor/leaflet.css">
+<script src="/static/vendor/leaflet.js"></script>
+<script src="/static/vendor/leaflet-heat.js"></script>
+<style>
+  :root {
+    --bg: #f5f4f1; --panel: #ffffff; --ink: #16181d; --ink2: #555a63; --muted: #8a8f98; --line: #e3e1dc;
+    --accent: #2a78d6;
+    --sev0: #9cc5a1; --sev1: #f2c14e; --sev2: #eb6834; --sev3: #8b1a1a;
+    --p-low: #c9ccd1; --p-med: #eda100; --p-high: #eb6834; --p-crit: #c3262b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; color: var(--ink); background: var(--bg); }
+  header { height: 52px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  select, button, input[type=text], textarea { font: inherit; }
+  select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: #eef1f5; color: var(--ink2); font-size: 11.5px; }
+  .chip.ok::before, .chip.off::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #2e9e57; }
+  .chip.off::before { background: #b5b9c0; }
+  .spacer { flex: 1; }
+  main { display: grid; grid-template-columns: 290px 1fr 360px; height: calc(100% - 52px); }
+  aside { background: var(--panel); overflow-y: auto; padding: 14px; }
+  aside.left { border-right: 1px solid var(--line); }
+  aside.right { border-left: 1px solid var(--line); display: flex; flex-direction: column; padding: 0; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; font-weight: 600; }
+  h2:first-child { margin-top: 0; }
+  #map { height: 100%; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .stat b { display: block; font-size: 19px; font-variant-numeric: tabular-nums; }
+  .stat small { color: var(--ink2); }
+  .bars .row { display: grid; grid-template-columns: 74px 1fr 46px; align-items: center; gap: 8px; margin: 5px 0; }
+  .bars .track { height: 9px; background: #eef0f2; border-radius: 4px; overflow: hidden; }
+  .bars .fill { height: 100%; border-radius: 4px; }
+  .bars .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); }
+  label.tog { display: flex; align-items: center; gap: 8px; margin: 6px 0; cursor: pointer; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { flex: 1; border: 0; background: #fff; padding: 5px 0; cursor: pointer; color: var(--ink2); }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .slider { margin: 8px 0; }
+  .slider div { display: flex; justify-content: space-between; color: var(--ink2); }
+  .slider input { width: 100%; }
+  .note { font-size: 11.5px; color: var(--ink2); background: #fbf6e9; border: 1px solid #f0e2b8; border-radius: 7px; padding: 8px 10px; margin-top: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .feedhead { padding: 14px; border-bottom: 1px solid var(--line); }
+  .replay { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .replay button, .btn { white-space: nowrap; border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .clock { font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 12px; }
+  #feed { overflow-y: auto; flex: 1; padding: 6px 14px 14px; }
+  .item { border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; margin: 8px 0; display: grid; grid-template-columns: 56px 1fr; gap: 10px; animation: in .35s ease; }
+  .item.noimg { grid-template-columns: 1fr; }
+  .item.live { border-color: var(--accent); box-shadow: 0 0 0 2px #2a78d622; }
+  .item img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; }
+  .item .txt { font-size: 12.5px; }
+  .item .meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .tag { font-size: 10.5px; padding: 1px 6px; border-radius: 4px; background: #eef1f5; color: var(--ink2); }
+  .tag.sev3, .tag.hi { background: #fbe4e1; color: #8b1a1a; }
+  .tag.place { background: #e7f0fb; color: #1c5cab; }
+  .tag.dim { opacity: .65; }
+  .score { height: 4px; background: #eef0f2; border-radius: 2px; margin-top: 7px; }
+  .score div { height: 100%; background: var(--ink); border-radius: 2px; }
+  @keyframes in { from { opacity: 0; transform: translateY(-4px);} to { opacity: 1; transform: none; } }
+  details.analyze { border-top: 1px solid var(--line); padding: 10px 14px; }
+  details.analyze summary { cursor: pointer; font-weight: 600; }
+  details.analyze textarea { width: 100%; height: 64px; margin: 8px 0 6px; border: 1px solid var(--line); border-radius: 7px; padding: 6px; }
+  .result { font-size: 12px; margin-top: 8px; color: var(--ink2); }
+  .leaflet-popup-content { font-size: 12.5px; min-width: 220px; }
+  .popt { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .popt td { padding: 2px 0; border-bottom: 1px solid #f0efec; }
+  .popt td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 11.5px; }
+  .empty { color: var(--muted); padding: 20px 4px; text-align: center; }
+  .modal { position: fixed; inset: 0; background: #0006; display: none; align-items: center; justify-content: center; z-index: 2000; }
+  .modal .box { background: #fff; border-radius: 10px; padding: 16px; width: min(460px, 92vw); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Disaster XAI-Net <span>damage assessment &amp; rescue prioritization</span></h1>
+  <select id="event"></select>
+  <div class="spacer"></div>
+  <span class="chip off" id="st-news">news model</span>
+  <span class="chip off" id="st-damage">damage model</span>
+  <span class="chip off" id="st-loc">localization</span>
+  <button class="btn" id="upload-btn" title="Run localization + damage on your own pre/post image pair">Analyze image pair</button>
+</header>
+<main>
+  <aside class="left">
+    <h2>Event summary</h2>
+    <div class="stats">
+      <div class="stat"><b id="s-bld">–</b><small>buildings assessed</small></div>
+      <div class="stat"><b id="s-dmg">–</b><small>predicted damaged</small></div>
+      <div class="stat"><b id="s-zones">–</b><small>zones ranked</small></div>
+      <div class="stat"><b id="s-news">–</b><small>posts received</small></div>
+    </div>
+    <h2>Predicted severity</h2>
+    <div class="bars" id="sev-bars"></div>
+    <h2>Zone priority</h2>
+    <div class="bars" id="pri-bars"></div>
+
+    <h2>Layers</h2>
+    <div class="seg" id="imagery"><button data-v="none" class="on">Basemap</button><button data-v="pre">Pre-event</button><button data-v="post">Post-event</button></div>
+    <label class="tog"><input type="checkbox" id="lay-zones" checked> Priority zones</label>
+    <label class="tog"><input type="checkbox" id="lay-bld" checked> Buildings by severity</label>
+    <label class="tog"><input type="checkbox" id="lay-heat"> Damage heatmap</label>
+    <label class="tog"><input type="checkbox" id="lay-news" checked> Geolocated posts</label>
+    <div class="legend" style="margin-top:6px">
+      <span><i style="background:var(--sev0)"></i>no damage</span><span><i style="background:var(--sev1)"></i>minor</span>
+      <span><i style="background:var(--sev2)"></i>major</span><span><i style="background:var(--sev3)"></i>destroyed</span>
+    </div>
+
+    <h2>Tile view (six panels)</h2>
+    <div style="display:flex;gap:6px"><select id="tile-sel" style="flex:1;min-width:0"></select><button class="btn" id="tile-go">Open</button></div>
+    <div style="font-size:11px;color:var(--ink2);margin-top:4px">Pre · post · ground truth · pipeline · heatmap · zones. Or click a dashed tile outline on the map.</div>
+
+    <h2>Prioritization weights</h2>
+    <div class="slider"><div><span>w₁ damage severity</span><b id="v-w1">0.50</b></div><input type="range" id="w1" min="0" max="1" step="0.05" value="0.5"></div>
+    <div class="slider"><div><span>w₂ damage concentration</span><b id="v-w2">0.35</b></div><input type="range" id="w2" min="0" max="1" step="0.05" value="0.35"></div>
+    <div class="slider"><div><span>w₃ news impact</span><b id="v-w3">0.15</b></div><input type="range" id="w3" min="0" max="1" step="0.05" value="0.15"></div>
+    <div class="slider"><div><span>zone size</span><b id="v-cell">150 m</b></div><input type="range" id="cell" min="100" max="500" step="50" value="150"></div>
+    <div class="note">Priority classes are an <b>uncalibrated decision-support indicator</b> computed from model predictions (P = w₁D + w₂C + w₃N). They are not verified statements about casualties or rescue needs.</div>
+  </aside>
+
+  <div id="map"></div>
+
+  <aside class="right">
+    <div class="feedhead">
+      <h2 style="margin:0">Social-media feed <span id="feed-src" style="text-transform:none;letter-spacing:0"></span></h2>
+      <div class="replay">
+        <button id="play">▶ Replay</button><button id="reset">⟲</button>
+        <select id="speed"><option value="1500">1×</option><option value="700" selected>2×</option><option value="250">6×</option></select>
+        <span class="clock" id="clock"></span>
+      </div>
+    </div>
+    <div id="feed"><div class="empty">Press Replay to stream archived posts for this event.</div></div>
+    <details class="analyze">
+      <summary>Analyze a new post (live models)</summary>
+      <textarea id="post-text" placeholder="e.g. Roofs torn off and streets flooded in Rockport, families need rescue #HurricaneHarvey"></textarea>
+      <input type="file" id="post-img" accept="image/*">
+      <div style="margin-top:8px"><button class="btn primary" id="post-go">Analyze</button></div>
+      <div class="result" id="post-res"></div>
+    </details>
+  </aside>
+</main>
+
+<div class="modal" id="modal"><div class="box">
+  <b>Analyze an image pair (live)</b>
+  <p style="color:var(--ink2);margin:6px 0 10px">Runs U-Net building localization on the pre-event image, then hazard and damage classification for every detected building. Takes about 1–3 minutes on a laptop CPU.</p>
+  <div>Pre-event image <input type="file" id="u-pre" accept="image/*"></div>
+  <div style="margin-top:6px">Post-event image <input type="file" id="u-post" accept="image/*"></div>
+  <div style="margin-top:12px;display:flex;gap:8px"><button class="btn primary" id="u-go">Run</button><button class="btn" id="u-close">Close</button></div>
+  <div class="result" id="u-res"></div>
+</div></div>
+
+<div class="modal" id="smodal"><div class="box" style="width:min(1180px,97vw);max-height:96vh;overflow:auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b id="s-title">Tile view</b>
+    <span><a class="btn" id="s-dl" download>Download PNG</a> <button class="btn" id="s-close">Close</button></span></div>
+  <div id="s-body" style="margin-top:8px"></div>
+</div></div>
+
+<div class="modal" id="xmodal"><div class="box" style="width:min(820px,96vw)">
+  <div style="display:flex;justify-content:space-between;align-items:center"><b>Why this prediction? Branch-wise Grad-CAM</b><button class="btn" id="x-close">Close</button></div>
+  <div id="x-body" style="margin-top:10px"></div>
+</div></div>
+
+<script>
+const SEV = ["no-damage","minor-damage","major-damage","destroyed"];
+const SEVC = {"no-damage":"#9cc5a1","minor-damage":"#f2c14e","major-damage":"#eb6834","destroyed":"#8b1a1a"};
+const PRI = ["Low","Medium","High","Critical"];
+const PRIC = {Low:"#c9ccd1",Medium:"#eda100",High:"#eb6834",Critical:"#c3262b"};
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+
+const map = L.map("map", {preferCanvas: true, zoomControl: true}).setView([29.7, -95.4], 11);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 20, attribution: "© OpenStreetMap contributors"}).addTo(map);
+const layers = {zones: L.layerGroup(), bld: L.layerGroup(), heat: null, news: L.layerGroup(), img: L.layerGroup(), outlines: L.layerGroup()};
+layers.outlines.addTo(map); layers.img.addTo(map);
+
+let BLD = [], TILESET = new Set(), BLDGJ = null;
+const bldFront = () => { if (BLDGJ && map.hasLayer(layers.bld)) BLDGJ.bringToFront(); };
+let EV = null, INDEX = null, NEWS = [], shown = [], liveItems = [], timer = null, cursor = 0, imagery = "none", zoneTimer = null;
+
+async function j(url, opt) { const r = await fetch(url, opt); if (!r.ok) throw new Error((await r.text()).slice(0, 300)); return r.json(); }
+
+function bars(el, entries, colors, total) {
+  el.innerHTML = entries.map(([k, v]) => `<div class="row"><span>${k}</span><div class="track"><div class="fill" style="width:${total ? 100 * v / total : 0}%;background:${colors[k]}"></div></div><span class="n">${fmt(v)}</span></div>`).join("");
+}
+
+async function loadStatus() {
+  try { const s = await j("/api/status");
+    [["news","st-news"],["damage","st-damage"],["localization","st-loc"]].forEach(([k,id]) => { $(id).className = "chip " + (s.models[k] ? "ok" : "off"); $(id).title = s.models[k] ? "model files found" : "model files not installed (see README)"; });
+  } catch (e) {}
+}
+
+async function loadEvents() {
+  INDEX = await j("/api/events");
+  $("event").innerHTML = INDEX.events.map(e => `<option value="${e.id}">${e.title}${e.news ? " · with news" : ""}</option>`).join("");
+  $("event").onchange = () => selectEvent($("event").value);
+  selectEvent(INDEX.events[0].id);
+}
+
+async function selectEvent(id) {
+  EV = INDEX.events.find(e => e.id === id);
+  stopReplay(); cursor = 0; shown = []; liveItems = []; $("feed").innerHTML = `<div class="empty">${EV.news ? "Press Replay to stream archived posts for this event." : "No social-media data for this event."}</div>`;
+  $("feed-src").textContent = EV.news ? `· CrisisMMD ${EV.news.replace(/_/g, " ")}` : "";
+  $("clock").textContent = "";
+  const g = await j(`/api/events/${id}/buildings`);
+  NEWS = EV.news ? (await j(`/api/events/${id}/news`)).items : [];
+  drawBuildings(g);
+  drawTiles();
+  await refreshZones();
+  drawNews();
+}
+
+function drawBuildings(g) {
+  layers.bld.clearLayers(); BLD = []; TILESET = new Set((EV.tiles || []).map(t => t.tile));
+  const gj = L.geoJSON(g, {
+    style: f => ({color: SEVC[f.properties.severity] || "#888", weight: 0.6, fillColor: SEVC[f.properties.severity] || "#888", fillOpacity: 0.85}),
+    onEachFeature: (f, l) => { const p = f.properties; l.bindPopup(`<b>Building</b> · ${p.tile}<table class="popt">
+      <tr><td>Predicted severity</td><td><b>${p.severity}</b></td></tr><tr><td>P(damaged)</td><td>${(+p.p_damaged).toFixed(2)}</td></tr>
+      <tr><td>Confidence</td><td>${(+p.severity_confidence).toFixed(2)}</td></tr><tr><td>Footprint</td><td>U-Net (predicted)</td></tr></table>
+      ${TILESET.has(p.tile) ? `<button class="btn primary" style="margin-top:6px;width:100%" onclick="explainBld(${BLD.push(f) - 1})">Explain (Grad-CAM)</button>
+         <button class="btn" style="margin-top:4px;width:100%" onclick="openSix('${p.tile}')">Six-panel view of this tile</button>`
+                            : `<div style="color:#888;margin-top:4px;font-size:11px">Grad-CAM: imagery for this tile not exported</div>`}`); }
+  });
+  layers.bld.addLayer(gj); BLDGJ = gj;
+  if ($("lay-bld").checked) layers.bld.addTo(map);
+  // heatmap of P(damaged) at building centroids
+  const pts = g.features.map(f => { const r = f.geometry.coordinates[0]; let x = 0, y = 0; r.forEach(c => { x += c[0]; y += c[1]; }); return [y / r.length, x / r.length, +f.properties.p_damaged || 0]; });
+  if (layers.heat) map.removeLayer(layers.heat);
+  layers.heat = L.heatLayer(pts, {radius: 18, blur: 22, maxZoom: 17, minOpacity: 0.25, gradient: {0.3: "#f2c14e", 0.6: "#eb6834", 0.9: "#8b1a1a"}});
+  if ($("lay-heat").checked) layers.heat.addTo(map);
+  if (gj.getBounds().isValid()) map.fitBounds(gj.getBounds(), {padding: [20, 20]});
+  const counts = Object.fromEntries(SEV.map(s => [s, 0])); let dmg = 0;
+  g.features.forEach(f => { counts[f.properties.severity] = (counts[f.properties.severity] || 0) + 1; dmg += (+f.properties.p_damaged > 0.5); });
+  $("s-bld").textContent = fmt(g.features.length); $("s-dmg").textContent = fmt(dmg);
+  bars($("sev-bars"), SEV.map(s => [s.replace("-damage", ""), counts[s]]), {"no": SEVC["no-damage"], "minor": SEVC["minor-damage"], "major": SEVC["major-damage"], "destroyed": SEVC["destroyed"]}, g.features.length);
+}
+
+function drawTiles() {
+  layers.outlines.clearLayers(); layers.img.clearLayers();
+  $("tile-sel").innerHTML = (EV.tiles || []).length ? EV.tiles.map(t => `<option value="${t.tile}">${t.tile.split("_").pop()} · ${t.n_buildings} bldgs</option>`).join("")
+                                                    : `<option value="">no exported imagery</option>`;
+  (EV.tiles || []).forEach(t => {
+    const [[a, b], [c, d]] = t.bounds;
+    L.polyline([[a, b], [a, d], [c, d], [c, b], [a, b]], {color: "#16181d", weight: 2, opacity: 0.8, dashArray: "4 4"})
+      .bindPopup(`<b>Tile</b> ${t.tile}<br>${t.n_buildings} predicted buildings<br><button class="btn primary" style="margin-top:6px;width:100%" onclick="openSix('${t.tile}')">Open six-panel view</button>`)
+      .addTo(layers.outlines);
+    if (imagery !== "none") L.imageOverlay(`/data/tiles/${t.tile}/${imagery}.jpg`, t.bounds, {opacity: 0.95}).addTo(layers.img);
+  });
+}
+
+function zoneParams() { return {cell_m: +$("cell").value, w1: +$("w1").value, w2: +$("w2").value, w3: +$("w3").value}; }
+
+async function refreshZones() {
+  const until = shown.length ? shown[shown.length - 1].timestamp : "0000";
+  const body = {...zoneParams(), until, use_news: true,
+    extra_news: liveItems.flatMap(it => (it.places || []).map(p => ({id: "live", lat: p.lat, lon: p.lon, score: it.priority.score, text: it.text})))};
+  const z = await j(`/api/events/${EV.id}/zones`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  layers.zones.clearLayers();
+  L.geoJSON(z, {
+    style: f => ({color: PRIC[f.properties.priority], weight: f.properties.priority === "Critical" ? 1.6 : 0.6, fillColor: PRIC[f.properties.priority],
+                  fillOpacity: f.properties.priority === "Low" ? 0.08 : 0.32}),
+    onEachFeature: (f, l) => { const p = f.properties; l.bindPopup(`<span class="pill" style="background:${PRIC[p.priority]}">${p.priority}</span> &nbsp;zone rank #${p.rank}
+      <table class="popt"><tr><td>Priority score P</td><td><b>${p.score.toFixed(2)}</b></td></tr>
+      <tr><td>D · damage severity</td><td>${p.D_severity.toFixed(2)}</td></tr><tr><td>C · damage concentration</td><td>${p.C_concentration.toFixed(2)}</td></tr>
+      <tr><td>N · news impact</td><td>${p.N_news.toFixed(2)} (${p.n_news_items} posts)</td></tr>
+      <tr><td>Buildings</td><td>${p.n_buildings}</td></tr><tr><td>Expected damaged</td><td>${p.n_damaged_expected}</td></tr>
+      <tr><td>Destroyed / major / minor</td><td>${p.severity_counts["destroyed"]} / ${p.severity_counts["major-damage"]} / ${p.severity_counts["minor-damage"]}</td></tr></table>`); }
+  }).addTo(layers.zones);
+  if ($("lay-zones").checked) layers.zones.addTo(map);
+  bldFront();
+  $("s-zones").textContent = fmt(z.summary.n_zones || 0);
+  const pc = z.summary.priority_counts || {};
+  bars($("pri-bars"), PRI.map(p => [p, pc[p] || 0]), PRIC, z.summary.n_zones || 0);
+}
+function refreshZonesSoon() { clearTimeout(zoneTimer); zoneTimer = setTimeout(refreshZones, 250); }
+
+function drawNews() {
+  layers.news.clearLayers();
+  [...shown, ...liveItems].forEach(it => (it.places || []).forEach(p => {
+    L.circleMarker([p.lat, p.lon], {radius: 6 + 8 * (it.priority?.score || 0), color: "#1c5cab", weight: 1.5, fillColor: "#2a78d6", fillOpacity: 0.55})
+      .bindPopup(`<b>${p.name}</b><br><span style="color:#555">${(it.text || "").slice(0, 160)}</span><br>item score ${(it.priority?.score || 0).toFixed(2)}`).addTo(layers.news);
+  }));
+  if ($("lay-news").checked) layers.news.addTo(map);
+  $("s-news").textContent = fmt(shown.length + liveItems.length);
+}
+
+function card(it, live) {
+  const t = it.text_informative, h = it.text_humanitarian, d = it.image_damage;
+  const tags = [];
+  if (t) tags.push(`<span class="tag ${t.label === "informative" ? "" : "dim"}">${t.label.replace("_", " ")} ${(t.probabilities.informative * 100).toFixed(0)}%</span>`);
+  if (h) tags.push(`<span class="tag ${["affected_injured_or_dead_people","infrastructure_and_utility_damage"].includes(h.label) ? "hi" : ""}">${h.label.replace(/_/g, " ")}</span>`);
+  if (d) tags.push(`<span class="tag ${d.label === "severe_damage" ? "sev3" : ""}">image: ${d.label.replace(/_/g, " ")}</span>`);
+  (it.places || []).forEach(p => tags.push(`<span class="tag place">📍 ${p.name}</span>`));
+  const img = it.image_url ? `<img src="${it.image_url}" alt="">` : "";
+  const when = it.timestamp ? new Date(it.timestamp).toLocaleString("en-GB", {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"}) : "live";
+  const s = it.priority?.score || 0;
+  return `<div class="item ${img ? "" : "noimg"} ${live ? "live" : ""}">${img}<div><div class="clock">${when}</div><div class="txt">${(it.text || "(image only)").replace(/https?:\/\/\S+/g, "").slice(0, 220)}</div>
+    <div class="meta">${tags.join("")}</div><div class="score" title="item score ${s.toFixed(2)}"><div style="width:${100 * s}%"></div></div></div></div>`;
+}
+
+function step() {
+  if (cursor >= NEWS.length) { stopReplay(); return; }
+  const it = NEWS[cursor++]; shown.push(it);
+  if (cursor === 1) $("feed").innerHTML = "";
+  $("feed").insertAdjacentHTML("afterbegin", card(it, false));
+  $("clock").textContent = new Date(it.timestamp).toLocaleString("en-GB", {day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"}) + ` · ${cursor}/${NEWS.length}`;
+  drawNews();
+  if ((it.places || []).length) refreshZonesSoon();
+}
+function startReplay() { if (!NEWS.length) return; stopReplay(); $("play").textContent = "❚❚ Pause"; timer = setInterval(step, +$("speed").value); }
+function stopReplay() { clearInterval(timer); timer = null; $("play").textContent = "▶ Replay"; }
+$("play").onclick = () => timer ? stopReplay() : startReplay();
+$("reset").onclick = () => { stopReplay(); cursor = 0; shown = []; $("feed").innerHTML = '<div class="empty">Replay reset.</div>'; $("clock").textContent = ""; drawNews(); refreshZones(); };
+$("speed").onchange = () => { if (timer) startReplay(); };
+
+["w1","w2","w3","cell"].forEach(id => $(id).oninput = () => {
+  $("v-" + id).textContent = id === "cell" ? `${$(id).value} m` : (+$(id).value).toFixed(2); refreshZonesSoon(); });
+document.querySelectorAll("#imagery button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#imagery button").forEach(x => x.classList.toggle("on", x === b)); imagery = b.dataset.v; drawTiles(); });
+[["lay-zones","zones"],["lay-bld","bld"],["lay-news","news"]].forEach(([id, k]) => $(id).onchange = () => { $(id).checked ? layers[k].addTo(map) : map.removeLayer(layers[k]); bldFront(); });
+$("lay-heat").onchange = () => layers.heat && ($("lay-heat").checked ? layers.heat.addTo(map) : map.removeLayer(layers.heat));
+
+$("post-go").onclick = async () => {
+  const fd = new FormData(); fd.append("text", $("post-text").value); fd.append("event", EV.id);
+  if ($("post-img").files[0]) fd.append("image", $("post-img").files[0]);
+  $("post-res").textContent = "Running models…";
+  try {
+    const r = await j("/api/news/analyze", {method: "POST", body: fd});
+    if ($("post-img").files[0]) r.image_url = URL.createObjectURL($("post-img").files[0]);
+    liveItems.push(r);
+    if (!shown.length && !liveItems.slice(0, -1).length) $("feed").innerHTML = "";
+    $("feed").insertAdjacentHTML("afterbegin", card(r, true));
+    $("post-res").textContent = `Done in ${r.latency_s}s · score ${r.priority.score.toFixed(2)} · ${(r.places || []).length ? "placed on the map" : "no in-region place found"}`;
+    drawNews(); refreshZones();
+  } catch (e) { $("post-res").textContent = "Error: " + e.message; }
+};
+
+async function explainBld(i) {
+  const f = BLD[i], p = f.properties;
+  $("xmodal").style.display = "flex";
+  $("x-body").innerHTML = `<div class="empty">Computing Grad-CAM for building ${p.pred_building_id} on ${p.tile}… (first time loads the model, ~10–30 s)</div>`;
+  try {
+    const r = await fetch("/api/explain", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({tile: p.tile, ring: f.geometry.coordinates[0]})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    const im = (src, cap) => `<figure style="margin:0;text-align:center"><img src="${src}" style="width:100%;border-radius:6px;image-rendering:auto"><figcaption style="font-size:11.5px;color:var(--ink2);margin-top:3px">${cap}</figcaption></figure>`;
+    const probs = SEV.map(k => `<div style="display:flex;gap:6px;align-items:center;font-size:12px"><span style="width:92px">${k}</span>
+      <span style="flex:1;background:#eee;border-radius:3px;height:9px"><span style="display:block;height:9px;border-radius:3px;width:${(100 * d.probabilities[k]).toFixed(0)}%;background:${SEVC[k]}"></span></span>
+      <span style="width:38px;text-align:right">${d.probabilities[k].toFixed(2)}</span></div>`).join("");
+    $("x-body").innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        ${im(d.images.pre, "Pre-event crop")}${im(d.images.post, "Post-event crop")}
+        ${im(d.images.convnext, `ConvNeXt branch (${d.grid.convnext.join("×")})`)}${im(d.images.vit, `ViT branch (${d.grid.vit.join("×")} tokens)`)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:14px;margin-top:10px">
+        <div>Model prediction (live): <b>${d.severity}</b><div style="margin-top:6px">${probs}</div></div>
+        <div style="font-size:12px;color:var(--ink2)">Red = regions that pushed the model towards <b>${d.severity}</b>. ${d.note}
+          <br>Computed in ${d.seconds} s. Imagery is the exported JPEG, so the live prediction can differ slightly from the map colour.</div></div>`;
+  } catch (e) {
+    $("x-body").innerHTML = `<div class="result" style="color:#b00">${e.message}</div><div style="font-size:12px;color:var(--ink2);margin-top:6px">Grad-CAM needs <code>models/deployment_bundle/</code> (see README).</div>`;
+  }
+}
+function openSix(tile) {
+  if (!tile) return;
+  const q = new URLSearchParams({w1: $("w1").value, w2: $("w2").value, w3: $("w3").value, cell_m: $("cell").value});
+  const url = `/api/tiles/${tile}/sixpanel.png?${q}`;
+  $("smodal").style.display = "flex"; $("s-title").textContent = `Tile view · ${tile}`; $("s-dl").href = url; $("s-dl").download = `six_panel_${tile}.png`;
+  $("s-body").innerHTML = `<div class="empty">Rendering six panels with the current weights…</div>`;
+  const img = new Image(); img.style.width = "100%";
+  img.onload = () => { $("s-body").innerHTML = ""; $("s-body").appendChild(img);
+    $("s-body").insertAdjacentHTML("beforeend", `<div style="font-size:11.5px;color:var(--ink2);margin-top:4px">Zones use the current sliders (news term not used inside a single tile). Heatmap scale is fixed across tiles, so colours are comparable.</div>`); };
+  img.onerror = () => { $("s-body").innerHTML = `<div class="result" style="color:#b00">Could not render this tile (is its imagery in demo_data/tiles?).</div>`; };
+  img.src = url;
+}
+$("tile-go").onclick = () => openSix($("tile-sel").value);
+$("s-close").onclick = () => $("smodal").style.display = "none";
+$("x-close").onclick = () => $("xmodal").style.display = "none";
+$("upload-btn").onclick = () => $("modal").style.display = "flex";
+$("u-close").onclick = () => $("modal").style.display = "none";
+$("u-go").onclick = async () => {
+  if (!$("u-pre").files[0] || !$("u-post").files[0]) { $("u-res").textContent = "Choose both images."; return; }
+  const fd = new FormData(); fd.append("pre", $("u-pre").files[0]); fd.append("post", $("u-post").files[0]);
+  $("u-res").textContent = "Running localization and damage models… (1–3 min on CPU)";
+  try {
+    const r = await j("/api/tiles/analyze", {method: "POST", body: fd});
+    const c = r.summary.severity_counts;
+    $("u-res").innerHTML = `<b>Hazard:</b> ${r.hazard.hazard} (${(r.hazard.confidence * 100).toFixed(0)}%)<br><b>${r.summary.n_buildings}</b> buildings found in ${r.localization.seconds}s; damage in ${r.damage_seconds}s<br>
+      no ${c["no-damage"]} · minor ${c["minor-damage"]} · major ${c["major-damage"]} · destroyed ${c["destroyed"]}<br><span style="color:#888">Images without geo-referencing are analysed in pixel space only.</span>`;
+  } catch (e) { $("u-res").textContent = "Error: " + e.message; }
+};
+
+loadStatus(); loadEvents().catch(e => { document.getElementById("feed").innerHTML = `<div class="empty">Could not load demo data: ${e.message}</div>`; });
+</script>
+</body>
+</html>

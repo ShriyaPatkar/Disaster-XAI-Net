@@ -1,0 +1,15 @@
+# dashboard + prioritization (required)
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+numpy
+pillow
+ftfy
+scipy
+matplotlib
+# live models (optional: only for "Analyze a new post" and "Analyze image pair")
+torch
+torchvision
+timm>=1.0
+transformers>=4.40
+scikit-image

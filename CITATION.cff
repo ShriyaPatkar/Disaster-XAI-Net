@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this code or build on this work, please cite it as below."
+title: "Disaster XAI-Net: Satellite Imagery-Driven Multi-Disaster Impact Assessment and Rescue Prioritization"
+type: software
+authors:
+  - given-names: Shriya
+    family-names: Patkar
+  - given-names: Swarali
+    family-names: Gandhi
+  - given-names: Lubdha
+    family-names: Modak
+  - given-names: Ayush
+    family-names: Jare
+  - given-names: Faiz
+    family-names: Rangari
+version: "1.0"
+date-released: "2026-10-28"
+license: MIT
+repository-code: "https://github.com/ShriyaPatkar/Disaster-XAI-Net"
+keywords:
+  - building damage assessment
+  - satellite imagery
+  - xBD
+  - explainable AI
+  - rescue prioritization
